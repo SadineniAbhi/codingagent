@@ -7,7 +7,7 @@ logger = get_logger(__name__)
 
 def run_command(command: str) -> subprocess.CompletedProcess[str]:
     try:
-        logger.info("Running command: %s", command)
+        logger.info("Running command")
         os.makedirs("/tmp/workspace", exist_ok=True)
         result = subprocess.run(
             command, shell=True, text=True, capture_output=True,

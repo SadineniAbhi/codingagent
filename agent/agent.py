@@ -71,7 +71,7 @@ def generate_code(state: State) -> dict:
     messages.append(HumanMessage(content=state.get('user_task', '')))
     result = agent.invoke({"messages": messages}, config={"callbacks": [langfuse_handler]}) # type: ignore
     summary = result["messages"][-1].content
-    return {"messages": [AIMessage(content=f"Code generation complete: {summary}")]}
+    return {"messages": [AIMessage(content= summary)]}
 
 
 def get_diff(state: State) -> dict:
