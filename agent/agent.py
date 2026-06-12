@@ -1,22 +1,22 @@
-import os
 import subprocess
 from typing import Annotated, NotRequired
+from langgraph.pregel.main import BaseCheckpointSaver
 from typing_extensions import TypedDict
 
+from langfuse import Langfuse
+from langfuse.langchain import CallbackHandler
 from langchain.agents import create_agent
 from langchain_anthropic import ChatAnthropic
 from langchain_core.tools import tool
-from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import interrupt
 from pydantic import SecretStr
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from service.bash_service import run_command
-from env import settings
-
+from utils.env import settings
 
 
 with open("agent/system_prompt.md") as f:
@@ -29,13 +29,14 @@ model = ChatAnthropic(
     stop=None,
 )
 
-checkpointer = MemorySaver()
 
+Langfuse(
+    public_key=settings.LANGFUSE_PUBLIC_KEY,
+    secret_key=settings.LANGFUSE_SECRET_KEY,
+    host=settings.LANGFUSE_BASE_URL,
+)
 
-PAT_TOKEN = settings.PAT_TOKEN
-REPO_URL = settings.REPO_URL
-REPO_NAME = REPO_URL.rstrip("/").split("/")[-1].removesuffix(".git")
-
+langfuse_handler = CallbackHandler()
 
 
 @tool
@@ -57,39 +58,24 @@ class State(TypedDict):
     approved: NotRequired[bool]
 
 
-def clone_repo(repo_url: str, pat_token: str) -> bool:
-    os.makedirs("/tmp/workspace", exist_ok=True)
-    url_with_token = repo_url.replace("https://", f"https://x:{pat_token}@")
-    subprocess.run(f"git clone {url_with_token}", shell=True, cwd="/tmp/workspace")
-    return True
-
 
 def snapshot(state: State) -> dict:
     subprocess.run(
-        f"rsync -a --exclude='.git' /tmp/workspace/{REPO_NAME}/ /tmp/snapshot/", shell=True
+        f"rsync -a --exclude='.git' /tmp/workspace/ /tmp/snapshot/", shell=True
     )
     return {}
 
-
-
-
 def generate_code(state: State) -> dict:
-    agent = create_agent(model, tools=[bash])
-    result = agent.invoke({
-        "messages": [
-            SystemMessage(content=_SYSTEM_PROMPT),
-            HumanMessage(content=f"Task: {state.get('user_task', '')}"),
-        ]
-    })
+    agent = create_agent(model, tools=[bash], system_prompt=_SYSTEM_PROMPT)
+    messages = state.get("messages", [])
+    messages.append(HumanMessage(content=state.get('user_task', '')))
+    result = agent.invoke({"messages": messages}, config={"callbacks": [langfuse_handler]}) # type: ignore
     summary = result["messages"][-1].content
     return {"messages": [AIMessage(content=f"Code generation complete: {summary}")]}
 
 
 def get_diff(state: State) -> dict:
-    result = subprocess.run(
-        "diff -ru --exclude='.git' --exclude='.venv' /tmp/snapshot /tmp/workspace/to-do",
-        shell=True, text=True, capture_output=True,
-    )
+    result = run_command("diff -ru --exclude='.git' --exclude='.venv' /tmp/snapshot /tmp/workspace")
     return {"diff": result.stdout}
 
 
@@ -107,7 +93,7 @@ def human_review(state: State) -> dict:
 
 
 def revert(state: State) -> dict:
-    subprocess.run("rsync -a --exclude='.git' /tmp/snapshot/ /tmp/workspace/to-do/", shell=True)
+    run_command("rsync -a --exclude='.git' /tmp/snapshot/ /tmp/workspace/")
     return {"messages": [AIMessage(content="Changes reverted to snapshot.")]}
 
 
@@ -115,7 +101,7 @@ def route_after_review(state: State) -> str:
     return END if state.get("approved") else "revert"
 
 
-def build_graph() -> CompiledStateGraph:
+def build_graph(checkpointer: BaseCheckpointSaver) -> CompiledStateGraph:
     g = StateGraph(State)
 
     g.add_node("snapshot", snapshot)
@@ -136,6 +122,4 @@ def build_graph() -> CompiledStateGraph:
     g.add_edge("revert", END)
 
     return g.compile(checkpointer=checkpointer)
-
-
 

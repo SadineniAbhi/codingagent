@@ -1,9 +1,12 @@
 import json
 from langgraph.types import Command
 from payloads.agent import Execute
-from custom_errors import APIError, FailedToStream, GraphNotPaused, FailedToResume, ThreadNotFound, FailedToGetState
+from utils.custom_errors import APIError, FailedToStream, GraphNotPaused, FailedToResume, ThreadNotFound, FailedToGetState
+from utils.logger import get_logger
 from fastapi.responses import StreamingResponse
 from langchain_core.runnables import RunnableConfig
+
+logger = get_logger(__name__)
 
 def _sse(data: dict) -> str:
     """
@@ -34,6 +37,7 @@ async def _stream_graph(graph, input_or_command, config: RunnableConfig):
 
 async def s_run(thread_id: str, task: Execute, graph):
     try:
+        logger.info("Starting run for thread %s", thread_id)
         config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
 
         async def generate():
@@ -41,12 +45,14 @@ async def s_run(thread_id: str, task: Execute, graph):
                 yield line
 
         return StreamingResponse(generate(), media_type="text/event-stream")
-    except:
+    except Exception:
+        logger.exception("Failed to stream graph for thread %s", thread_id)
         raise FailedToStream("unable stream the response", 500)
 
 
 async def s_resume(thread_id: str, input: str, graph):
     try:
+        logger.info("Resuming graph for thread %s", thread_id)
         config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
         state = graph.get_state(config)
         if not state.next:
@@ -58,20 +64,25 @@ async def s_resume(thread_id: str, input: str, graph):
 
         return StreamingResponse(generate(), media_type="text/event-stream")
     except APIError:
+        logger.exception("APIError during resume for thread %s", thread_id)
         raise
     except Exception:
+        logger.exception("Failed to resume graph for thread %s", thread_id)
         raise FailedToResume("Failed to resume graph", 500)
 
 
-async def s_get_state(infra_id: str, graph):
+async def s_get_state(thread_id: str, graph):
     try:
-        config: RunnableConfig = {"configurable": {"thread_id": infra_id}}
+        logger.info("Fetching state for thread %s", thread_id)
+        config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
         state = graph.get_state(config)
         if not state.values:
             raise ThreadNotFound("Thread not found", 404)
         return {"messages": state.values["messages"], "paused_at": list(state.next)}
     except APIError:
+        logger.exception("APIError during get_state for thread %s", thread_id)
         raise
     except Exception:
+        logger.exception("Failed to get state for thread %s", thread_id)
         raise FailedToGetState("Failed to get state", 500)
 

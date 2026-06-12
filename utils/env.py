@@ -6,6 +6,12 @@ class Settings(BaseSettings):
     REPO_URL: str
     PATH_PREFIX: str
     ANTHROPIC_API_KEY: str
+    AUTH0_DOMAIN: str
+    AUTH0_AUDIENCE: str
+    LANGFUSE_SECRET_KEY: str
+    LANGFUSE_PUBLIC_KEY: str
+    LANGFUSE_BASE_URL: str
+    MONGO_DB_URI: str
 
     model_config = {"env_file": ".env"}
 
