@@ -1,6 +1,8 @@
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from beanie import init_beanie
+from pymongo import AsyncMongoClient, MongoClient
 
 from utils.env import settings
 from utils.logger import get_logger
@@ -9,21 +11,37 @@ from routes.default import app as default_router
 from routes.agent import app as agent_router
 from routes.bash import app as bash_router
 from contextlib import asynccontextmanager
-from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.mongodb import MongoDBSaver
 from agent.agent import build_graph
 from utils.msc import clone_repo
+from models.project import Project
 
 logger = get_logger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Starting up — building graph and cloning repo")
-    app.state.graph = build_graph(MemorySaver())
+    logger.info("Connecting to MongoDB")
+    async_client = AsyncMongoClient(settings.MONGO_DB_URI)
+    await init_beanie(database=async_client.backend, document_models=[Project])
+    logger.info("Beanie initialised")
+
+    sync_client = MongoClient(settings.MONGO_DB_URI)
+    checkpointer = MongoDBSaver(
+        client=sync_client,
+        db_name="langgraph"
+    )
+    logger.info("MongoDBSaver checkpointer ready")
+
+    logger.info("Building agent graph and cloning repo")
+    app.state.graph = build_graph(checkpointer)
     clone_repo(settings.REPO_URL, settings.PAT_TOKEN)
     logger.info("Startup complete")
     yield
-    logger.info("Shutting down")
+    logger.info("Shutting down — closing MongoDB connections")
+    await async_client.close()
+    sync_client.close()
+    logger.info("Shutdown complete")
 
 
 app = FastAPI(title="Coding Agent API", lifespan=lifespan)

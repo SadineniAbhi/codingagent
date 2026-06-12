@@ -69,7 +69,8 @@ def generate_code(state: State) -> dict:
     agent = create_agent(model, tools=[bash], system_prompt=_SYSTEM_PROMPT)
     messages = state.get("messages", [])
     messages.append(HumanMessage(content=state.get('user_task', '')))
-    result = agent.invoke({"messages": messages}, config={"callbacks": [langfuse_handler]}) # type: ignore
+    result = agent.invoke({"messages": messages}) # type: ignore
+    # result = agent.invoke({"messages": messages}, config={"callbacks": [langfuse_handler]}) # type: ignore
     summary = result["messages"][-1].content
     return {"messages": [AIMessage(content= summary)]}
 
