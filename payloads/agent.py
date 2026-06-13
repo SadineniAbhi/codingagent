@@ -7,5 +7,3 @@ class Execute(BaseModel):
 class ResumeRequest(BaseModel):
     input: Literal["yes", "no"]
 
-class BashRequest(BaseModel):
-    command: str

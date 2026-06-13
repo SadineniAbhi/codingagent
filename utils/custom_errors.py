@@ -24,3 +24,9 @@ class FailedToGetState(APIError):
 class CommandFailed(APIError):
     pass
 
+class InvalidGitHubToken(APIError):
+    pass
+
+class GitHubAPIError(APIError):
+    pass
+
