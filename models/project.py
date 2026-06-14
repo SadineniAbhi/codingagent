@@ -15,4 +15,5 @@ class Project(Document):
         indexes = [
             IndexModel([("project_id")], unique=True),
             IndexModel([("name")], unique=True),
+            IndexModel([("user_id")]),
         ]

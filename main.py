@@ -10,6 +10,7 @@ from utils.custom_errors import APIError
 from routes.default import app as default_router
 from routes.agent import app as agent_router
 from routes.github import app as github_router
+from routes.project import app as project_router
 from contextlib import asynccontextmanager
 from langgraph.checkpoint.mongodb import MongoDBSaver
 from agent.agent import build_graph
@@ -47,6 +48,7 @@ app = FastAPI(title="Coding Agent API", lifespan=lifespan)
 app.include_router(default_router)
 app.include_router(agent_router)
 app.include_router(github_router)
+app.include_router(project_router)
 
 
 @app.exception_handler(APIError)

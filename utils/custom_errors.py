@@ -30,3 +30,6 @@ class InvalidGitHubToken(APIError):
 class GitHubAPIError(APIError):
     pass
 
+class ProjectError(APIError):
+    pass
+
