@@ -2,7 +2,8 @@ import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from beanie import init_beanie
-from pymongo import AsyncMongoClient, MongoClient
+from pymongo import AsyncMongoClient
+from contextlib import asynccontextmanager
 
 from utils.env import settings
 from utils.logger import get_logger
@@ -11,9 +12,6 @@ from routes.default import app as default_router
 from routes.agent import app as agent_router
 from routes.github import app as github_router
 from routes.project import app as project_router
-from contextlib import asynccontextmanager
-from langgraph.checkpoint.mongodb import MongoDBSaver
-from agent.agent import build_graph
 from models.project import Project
 
 logger = get_logger(__name__)
@@ -24,22 +22,10 @@ async def lifespan(app: FastAPI):
     logger.info("Connecting to MongoDB")
     async_client = AsyncMongoClient(settings.MONGO_DB_URI)
     await init_beanie(database=async_client.backend, document_models=[Project])
-    logger.info("Beanie initialised")
-
-    sync_client = MongoClient(settings.MONGO_DB_URI)
-    checkpointer = MongoDBSaver(
-        client=sync_client,
-        db_name="langgraph"
-    )
-    logger.info("MongoDBSaver checkpointer ready")
-
-    logger.info("Building agent graph")
-    app.state.graph = build_graph(checkpointer)
     logger.info("Startup complete")
     yield
     logger.info("Shutting down — closing MongoDB connections")
     await async_client.close()
-    sync_client.close()
     logger.info("Shutdown complete")
 
 
@@ -53,7 +39,7 @@ app.include_router(project_router)
 
 @app.exception_handler(APIError)
 async def api_error_handler(request: Request, exc: APIError) -> JSONResponse:
-    logger.error("APIError on %s %s: %s", request.method, request.url.path, exc)
+    logger.exception("APIError on %s %s: %s", request.method, request.url.path, exc_info = exc)
     return JSONResponse(
         status_code=exc.status_code or 500,
         content={"error": str(exc)},

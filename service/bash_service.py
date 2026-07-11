@@ -15,6 +15,5 @@ def run_command(command: str) -> subprocess.CompletedProcess[str]:
         )
         logger.info("Command exited with code %s", result.returncode)
         return result
-    except Exception:
-        logger.exception("Failed to run command: %s", command)
-        raise CommandFailed("Failed to run command", 500)
+    except Exception as e:
+        raise CommandFailed("Failed to run command", 500) from e
